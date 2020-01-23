@@ -1,0 +1,9 @@
+FROM rust:1-alpine
+
+RUN apk update && apk add clang cmake musl-dev make
+
+COPY ../minionion /minionion
+COPY . /build
+WORKDIR /build
+
+RUN RUSTFLAGS="-C target-feature=-crt-static" cargo build --release

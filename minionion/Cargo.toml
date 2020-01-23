@@ -1,0 +1,10 @@
+[package]
+name = "minionion"
+version = "0.1.0"
+authors = ["user"]
+edition = "2018"
+
+[dependencies]
+# Mainline doesn't build with newer clang versions
+mbedtls = {git = "https://github.com/jseyfried/rust-mbedtls.git", branch = "update-bindgen", default_features = false, features = ["std", "time", "use_libc"]}
+byteorder = "1.3.2"

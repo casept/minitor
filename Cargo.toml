@@ -1,0 +1,17 @@
+[package]
+name = "minitor"
+version = "0.1.0"
+authors = ["user"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+minionion = {path = "minionion"}
+
+
+[profile.release]
+opt-level = 'z'  # Optimize for size.
+lto = true
+codegen-units = 1
+panic = "abort"
