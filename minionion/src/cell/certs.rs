@@ -2,6 +2,7 @@ use super::variable_cell::{VariableCell, VariableCommand};
 use byteorder::{NetworkEndian, ReadBytesExt};
 use mbedtls::x509::certificate::Certificate;
 use std::io::{Cursor, Error, Read};
+use std::convert::TryInto;
 
 #[derive(Debug)]
 pub(crate) struct CertsCell {
@@ -73,7 +74,7 @@ struct RSAEd25519Cross {
 #[derive(Debug)]
 struct TorCustomFormatCert {
     cert_type: u8,
-    expiration_date: [u8; 4],
+    expiration_date: u32,
     cert_key_type: CertType,
     certified_key: [u8; 32],
     extensions: Option<Vec<CertExtension>>,
@@ -98,6 +99,7 @@ impl TorCustomFormatCert {
 
         let mut expiration_date_buf: [u8; 4] = [0x0; 4];
         rdr.read_exact(&mut expiration_date_buf)?;
+        let expiration_date = expiration_date_buf.as_ref().read_u32::<NetworkEndian>()?;
 
         let mut cert_key_type_buf: [u8; 1] = [0x0];
         rdr.read_exact(&mut cert_key_type_buf)?;
@@ -128,21 +130,21 @@ impl TorCustomFormatCert {
                 _ => panic!("Unknown certificate extension flag: {}", ext_flags_buf[0]),
             }
 
-            let mut ext_data: Vec<u8> = vec![];
+            let mut ext_data: Vec<u8> = Vec::new();
             ext_data.resize(ext_length as usize, 0x0);
             rdr.read_exact(&mut ext_data)?;
 
             let ed25519_cross: Option<RSAEd25519Cross>;
-            let parse_signed_with_ed25519_key: Option<SignedWithEd25519KeyExtension>;
+            let signed_with_ed25519_key_extension: Option<SignedWithEd25519KeyExtension>;
             match ext_type {
                 CertExtType::RSAEd25519Cross => {
-                    parse_ed25519_cross(data);
+                    parse_ed25519_cross(&mut &*ext_data);
                 }
                 CertExtType::SignedWithEd25519Key => {
-                    parse_signed_with_ed25519_key(data);
+                    parse_signed_with_ed25519_key(&mut &*ext_data);
                 }
             }
-            extensions.push(CertExtension { ext_type });
+            extensions.push(CertExtension { rsa_ed25519_cross: None, ext_type: ext_type, ed25519_key_extension: None });
         }
 
         let mut signature_buf: Vec<u8> = vec![];
@@ -151,7 +153,7 @@ impl TorCustomFormatCert {
         if extensions.len() > 0 {
             return Ok(TorCustomFormatCert {
                 cert_type: cert_type,
-                expiration_date: expiration_date_buf,
+                expiration_date: expiration_date,
                 cert_key_type: cert_key_type,
                 certified_key: certified_key,
                 extensions: Some(extensions),
@@ -160,7 +162,7 @@ impl TorCustomFormatCert {
         } else {
             return Ok(TorCustomFormatCert {
                 cert_type: cert_type,
-                expiration_date: expiration_date_buf,
+                expiration_date: expiration_date,
                 cert_key_type: cert_key_type,
                 certified_key: certified_key,
                 extensions: None,
@@ -230,23 +232,31 @@ impl CertsCell {
     }
 }
 
+// FIXME: Implement
+struct SignedWithEd25519Key {
+
+}
+fn parse_signed_with_ed25519_key(rdr: &mut dyn Read) -> SignedWithEd25519Key {
+	return SignedWithEd25519Key{};
+}
+
 fn parse_ed25519_cross(rdr: &mut dyn Read) -> RSAEd25519Cross {
-    let ed25519_key: [u8; 32];
-    rdr.read_exact(ed25519_key);
+    let mut ed25519_key: [u8; 32] = [0x0; 32];
+    rdr.read_exact(&mut ed25519_key);
 
-    let expiration_date: [u8; 4];
-    rdr.expiration_date(expiration_date);
+    let mut expiration_date: [u8; 4] = [0x0; 4];
+    rdr.read_exact(&mut expiration_date);
 
-    let sig_len: [u8; 1];
-    rdr.read_exact(sig_len);
+    let mut sig_len: [u8; 1] = [0x0;1];
+    rdr.read_exact(&mut sig_len);
 
-    let sig_buf: Vec<u8> = vec![];
-    sig_buf.resize(sig_len[1], 0x0);
-    rdr.read_exact(sig_buf);
+    let mut sig_buf: Vec<u8> = vec![];
+    sig_buf.resize(sig_len[0].try_into().unwrap(), 0x0);
+    rdr.read_exact(&mut sig_buf);
 
     return RSAEd25519Cross {
         ed25519_key: ed25519_key,
-        expiration_date: expiration_date,
+        expiration_date: expiration_date.as_ref().read_u32::<NetworkEndian>().unwrap(),
         signature: sig_buf,
     };
 }
